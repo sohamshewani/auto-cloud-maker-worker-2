@@ -47,23 +47,30 @@ def run(cmd, cwd=None):
     return res.returncode == 0, res.stdout, res.stderr
 
 def ask_gemini(prompt: str, max_tokens=4000) -> str:
-    for model_name in MODELS:
-        try:
-            print(f"⚡ [Attempt 1] Querying [{model_name}]...", flush=True)
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    max_output_tokens=max_tokens,
-                    temperature=0.2
+    for attempt in range(4):
+        for model_name in MODELS:
+            try:
+                print(f"⚡ [Attempt {attempt + 1}] Querying [{model_name}]...", flush=True)
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        max_output_tokens=max_tokens,
+                        temperature=0.2
+                    )
                 )
-            )
-            if response.text and response.text.strip():
-                return response.text.strip()
-        except Exception as e:
-            print(f"⚠️ [{model_name}] exception: {e}. Trying fallback...", flush=True)
-            time.sleep(2)
-    raise RuntimeError("All models failed to respond.")
+                if response.text and response.text.strip():
+                    return response.text.strip()
+            except Exception as e:
+                err_str = str(e)
+                print(f"⚠️ [{model_name}] notice: {err_str[:120]}...", flush=True)
+                time.sleep(5)
+        # If all models hit a 503 spike, wait for Google's server load to settle
+        wait_time = (attempt + 1) * 12
+        print(f"⏳ Cloud demand spike detected across all models. Pausing {wait_time}s before retry...", flush=True)
+        time.sleep(wait_time)
+    raise RuntimeError("All models failed after multiple retries.")
+
 
 def clean_code(raw: str) -> str:
     cleaned = raw.strip()
